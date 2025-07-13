@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  ogsurvival-prod:
+    image: ghcr.io/ogsurvival/ogsurvival-organization:latest
+    container_name: ogsurvival-prod
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - LOG_LEVEL=warn
+      - DATABASE_URL=${PROD_DATABASE_URL}
+      - API_KEY=${PROD_API_KEY}
+      - REDIS_URL=${PROD_REDIS_URL}
+      - MONITORING_ENABLED=true
+      - METRICS_ENABLED=true
+    ports:
+      - "${PROD_PORT:-80}:8080"
+    volumes:
+      - prod_data:/app/data
+      - prod_logs:/app/logs
+    networks:
+      - ogsurvival-prod
+    depends_on:
+      - redis-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  redis-prod:
+    image: redis:7-alpine
+    container_name: redis-prod
+    restart: unless-stopped
+    ports:
+      - "${PROD_REDIS_PORT:-6381}:6379"
+    volumes:
+      - redis_prod_data:/data
+    networks:
+      - ogsurvival-prod
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  nginx-prod:
+    image: nginx:alpine
+    container_name: nginx-prod
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - ogsurvival-prod
+    networks:
+      - ogsurvival-prod
+
+volumes:
+  prod_data:
+  prod_logs:
+  redis_prod_data:
+  nginx_logs:
+
+networks:
+  ogsurvival-prod:
+    driver: bridge

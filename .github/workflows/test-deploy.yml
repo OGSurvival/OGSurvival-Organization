@@ -1,0 +1,86 @@
+name: Deploy to TEST Environment
+
+on:
+  push:
+    branches:
+      - test
+      - testing
+      - 'test/**'
+  release:
+    types: [prereleased]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  deploy-test:
+    runs-on: ubuntu-latest
+    environment: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=tag
+          type=sha,prefix=test-
+          type=raw,value=test-latest
+          
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        
+    - name: Deploy to TEST environment
+      run: |
+        echo "Deploying to TEST environment..."
+        echo "Image: ${{ steps.meta.outputs.tags }}"
+        echo "Environment: TEST"
+        echo "Port: ${{ vars.TEST_PORT }}"
+        echo "Host: ${{ vars.TEST_HOST }}"
+        
+        # Here you would add your actual deployment commands
+        # For example, using docker compose, kubectl, or other deployment tools
+        
+        # Example deployment command (replace with your actual deployment logic):
+        # docker run -d --name ogsurvival-test -p ${{ vars.TEST_PORT }}:8080 \
+        #   -e ENVIRONMENT=test \
+        #   -e DATABASE_URL=${{ secrets.TEST_DATABASE_URL }} \
+        #   -e API_KEY=${{ secrets.TEST_API_KEY }} \
+        #   ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:test-latest
+        
+    - name: Run integration tests
+      run: |
+        echo "Running integration tests..."
+        # Add your integration test commands here
+        # For example:
+        # npm run test:integration
+        # docker run --rm --network container:ogsurvival-test test-runner:latest
+        
+    - name: Notify deployment status
+      if: always()
+      run: |
+        if [ ${{ job.status }} == 'success' ]; then
+          echo "✅ TEST deployment successful"
+          echo "🔗 Test environment available at: ${{ vars.TEST_HOST }}:${{ vars.TEST_PORT }}"
+        else
+          echo "❌ TEST deployment failed"
+        fi
