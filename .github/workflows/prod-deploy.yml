@@ -1,0 +1,98 @@
+name: Deploy to PROD Environment
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  release:
+    types: [released]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=tag
+          type=sha,prefix=prod-
+          type=raw,value=latest
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        
+    - name: Pre-deployment checks
+      run: |
+        echo "Running pre-deployment checks..."
+        # Add your pre-deployment validation here
+        # For example:
+        # - Check if previous deployment is healthy
+        # - Validate configuration
+        # - Run smoke tests
+        
+    - name: Deploy to PROD environment
+      run: |
+        echo "Deploying to PRODUCTION environment..."
+        echo "Image: ${{ steps.meta.outputs.tags }}"
+        echo "Environment: PRODUCTION"
+        echo "Port: ${{ vars.PROD_PORT }}"
+        echo "Host: ${{ vars.PROD_HOST }}"
+        
+        # Here you would add your actual deployment commands
+        # For example, using docker compose, kubectl, or other deployment tools
+        
+        # Example deployment command (replace with your actual deployment logic):
+        # docker run -d --name ogsurvival-prod -p ${{ vars.PROD_PORT }}:8080 \
+        #   -e ENVIRONMENT=production \
+        #   -e DATABASE_URL=${{ secrets.PROD_DATABASE_URL }} \
+        #   -e API_KEY=${{ secrets.PROD_API_KEY }} \
+        #   ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        
+    - name: Post-deployment validation
+      run: |
+        echo "Running post-deployment validation..."
+        # Add your post-deployment validation here
+        # For example:
+        # - Health checks
+        # - Smoke tests
+        # - Monitoring alerts setup
+        
+    - name: Notify deployment status
+      if: always()
+      run: |
+        if [ ${{ job.status }} == 'success' ]; then
+          echo "✅ PRODUCTION deployment successful"
+          echo "🚀 Production environment available at: ${{ vars.PROD_HOST }}:${{ vars.PROD_PORT }}"
+        else
+          echo "❌ PRODUCTION deployment failed"
+          echo "🚨 Production deployment requires immediate attention"
+        fi

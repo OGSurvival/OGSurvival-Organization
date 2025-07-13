@@ -1,0 +1,74 @@
+name: Deploy to DEV Environment
+
+on:
+  push:
+    branches:
+      - dev
+      - develop
+      - 'dev/**'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=sha,prefix=dev-
+          type=raw,value=dev-latest
+          
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        
+    - name: Deploy to DEV environment
+      run: |
+        echo "Deploying to DEV environment..."
+        echo "Image: ${{ steps.meta.outputs.tags }}"
+        echo "Environment: DEV"
+        echo "Port: ${{ vars.DEV_PORT }}"
+        echo "Host: ${{ vars.DEV_HOST }}"
+        
+        # Here you would add your actual deployment commands
+        # For example, using docker compose, kubectl, or other deployment tools
+        
+        # Example deployment command (replace with your actual deployment logic):
+        # docker run -d --name ogsurvival-dev -p ${{ vars.DEV_PORT }}:8080 \
+        #   -e ENVIRONMENT=dev \
+        #   -e DATABASE_URL=${{ secrets.DEV_DATABASE_URL }} \
+        #   -e API_KEY=${{ secrets.DEV_API_KEY }} \
+        #   ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:dev-latest
+        
+    - name: Notify deployment status
+      if: always()
+      run: |
+        if [ ${{ job.status }} == 'success' ]; then
+          echo "✅ DEV deployment successful"
+        else
+          echo "❌ DEV deployment failed"
+        fi
